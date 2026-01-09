@@ -11,6 +11,7 @@ from app.models.schemas import (
     JobStatus, ProblemType
 )
 from app.services import job_manager, ml_service
+from app.services.job_manager import JobStatus as JMStatus
 from app.config import settings
 
 router = APIRouter(prefix="/automl", tags=["AutoML"])
@@ -105,29 +106,54 @@ async def get_job_progress(job_id: str):
 @router.get("/jobs/{job_id}/results")
 async def get_job_results(job_id: str):
     """Get AutoML job results (only available when completed)."""
-    job = job_manager.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    
-    if job.status != job_manager.JobStatus.COMPLETED:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Job not completed. Current status: {job.status.value}"
-        )
-    
-    if not job.result:
-        raise HTTPException(status_code=500, detail="Results not available")
-    
-    # Return result directly - simpler and more reliable
-    result = job.result.copy()
-    result["status"] = "completed"
-    
-    # Calculate total training time
-    result["total_training_time_seconds"] = sum(
-        r.get("training_time_seconds", 0) for r in result.get("leaderboard", [])
-    )
-    
-    return result
+    try:
+        job = job_manager.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        # Check status using string comparison
+        if job.status.value != "completed":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Job not completed. Current status: {job.status.value}"
+            )
+        
+        if not job.result:
+            raise HTTPException(status_code=500, detail="Results not available")
+        
+        # Build response manually to avoid any serialization issues
+        response = {
+            "job_id": str(job.id),
+            "status": "completed",
+            "problem_type": job.result.get("problem_type", "classification"),
+            "best_algorithm": job.result.get("best_algorithm", "Unknown"),
+            "best_score": float(job.result.get("best_score", 0)),
+            "best_metric": job.result.get("best_metric", "Accuracy"),
+            "leaderboard": job.result.get("leaderboard", []),
+            "model_id": job.result.get("model_id", ""),
+            "model_path": job.result.get("model_path", ""),
+            "feature_engineer_path": job.result.get("feature_engineer_path"),
+            "dataset_id": job.result.get("dataset_id", ""),
+            "target_column": job.result.get("target_column", ""),
+            "train_size": int(job.result.get("train_size", 0)),
+            "test_size": int(job.result.get("test_size", 0)),
+            "n_features": int(job.result.get("n_features", 0)),
+            "feature_importance": job.result.get("feature_importance", []),
+            "metrics": job.result.get("metrics", {}),
+            "completed_at": job.result.get("completed_at", ""),
+            "total_training_time_seconds": sum(
+                r.get("training_time_seconds", 0) for r in job.result.get("leaderboard", [])
+            )
+        }
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error getting results: {str(e)}")
 
 
 @router.post("/jobs/{job_id}/stop")
