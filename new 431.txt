@@ -19,3 +19,14 @@ curl "http://192.168.1.147:8000/api/automl/jobs/YOUR_JOB_ID/results"
 curl -X POST "http://192.168.1.147:8000/api/predictions/realtime/6cece483-db2d-4973-bb16-2b2b1b814216" \
   -H "Content-Type: application/json" \
   -d '{"feature1": 0.5, "feature2": 1.2, "feature3": 0.8}'
+  
+  
+curl -X POST "http://192.168.1.147:8000/api/predictions/realtime/6cece483-db2d-4973-bb16-2b2b1b814216" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "age": 35,
+    "income": 75000,
+    "credit_score": 720,
+    "education": "Bachelor",
+    "employment": "Employed"
+  }'
