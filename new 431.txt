@@ -1,0 +1,17 @@
+# 1. Start AutoML
+curl -X POST "http://192.168.1.147:8000/api/automl/start" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_id": "test",
+    "dataset_path": "/home/ashok/work/latest/kedro-ml-engine/sample_data.csv",
+    "target_column": "target",
+    "problem_type": "classification"
+  }'
+
+# Returns: {"job_id": "xxx-xxx-xxx", "status": "queued", ...}
+
+# 2. Check progress (use the job_id from above)
+curl "http://192.168.1.147:8000/api/automl/jobs/YOUR_JOB_ID/progress"
+
+# 3. Get results when completed
+curl "http://192.168.1.147:8000/api/automl/jobs/YOUR_JOB_ID/results"
