@@ -1,27 +1,25 @@
-# 1. Start AutoML
+3. Train New Model (without old registry conflicts)
+bash# Delete old models registry (clean start)
+rm -rf /home/ashok/work/latest/ml-engine-fastapi-service/models/*
+
+# Train new model
 curl -X POST "http://192.168.1.147:8000/api/automl/start" \
   -H "Content-Type: application/json" \
   -d '{
-    "dataset_id": "test",
+    "dataset_id": "loan",
     "dataset_path": "/home/ashok/work/latest/kedro-ml-engine/sample_data.csv",
     "target_column": "loan_approved",
-    "problem_type": "classification"
+    "problem_type": "classification",
+    "use_feature_engineering": true
   }'
+4. Wait for Training & Get Model ID
+bash# Check progress
+curl "http://192.168.1.147:8000/api/automl/jobs/{JOB_ID}/progress"
 
-# Returns: {"job_id": "xxx-xxx-xxx", "status": "queued", ...}
-
-# 2. Check progress (use the job_id from above)
-curl "http://192.168.1.147:8000/api/automl/jobs/YOUR_JOB_ID/progress"
-
-# 3. Get results when completed
-curl "http://192.168.1.147:8000/api/automl/jobs/YOUR_JOB_ID/results"
-
-curl -X POST "http://192.168.1.147:8000/api/predictions/realtime/6cece483-db2d-4973-bb16-2b2b1b814216" \
-  -H "Content-Type: application/json" \
-  -d '{"feature1": 0.5, "feature2": 1.2, "feature3": 0.8}'
-  
-  
-curl -X POST "http://192.168.1.147:8000/api/predictions/realtime/6cece483-db2d-4973-bb16-2b2b1b814216" \
+# List models after completion
+curl "http://192.168.1.147:8000/api/models"
+5. Test Prediction
+bashcurl -X POST "http://192.168.1.147:8000/api/predictions/realtime/{MODEL_ID}" \
   -H "Content-Type: application/json" \
   -d '{
     "age": 35,
