@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
 
 # Add ml_engine to path
-ML_ENGINE_PATH = os.getenv("ML_ENGINE_PATH", "/home/claude/kedro-ml-engine/src")
+ML_ENGINE_PATH = os.getenv("ML_ENGINE_PATH", "/home/ashok/work/latest/kedro-ml-engine/src")
 if ML_ENGINE_PATH not in sys.path:
     sys.path.insert(0, ML_ENGINE_PATH)
 
@@ -19,8 +19,7 @@ if ML_ENGINE_PATH not in sys.path:
 from ml_engine.automl import automl_find_best_model, get_classification_algorithms, get_regression_algorithms
 from ml_engine.train import train_model
 from ml_engine.feature_engineering import FeatureEngineer
-from ml_engine.evaluation import cross_validate_model, plot_confusion_matrix, plot_roc_curve
-from ml_engine.explainability import explain_model_shap
+from ml_engine.evaluation import cross_validate_model
 
 from app.config import settings
 from app.services.job_manager import Job, job_manager
@@ -66,6 +65,7 @@ class MLService:
         model_path: str,
         feature_engineer_path: str = None,
         feature_names: List[str] = None,
+        original_feature_names: List[str] = None,
         metadata: Dict[str, Any] = None
     ):
         """Register a trained model."""
@@ -78,7 +78,8 @@ class MLService:
             "metric": metric,
             "model_path": model_path,
             "feature_engineer_path": feature_engineer_path,
-            "feature_names": feature_names or [],
+            "feature_names": feature_names or [],  # Features after encoding (what model expects)
+            "original_feature_names": original_feature_names or [],  # Original columns before encoding
             "created_at": datetime.now().isoformat(),
             "is_deployed": False,
             "metadata": metadata or {}
@@ -135,6 +136,9 @@ class MLService:
         X = df.drop(columns=[target_column])
         y = df[target_column]
         
+        # Save original feature names (before any encoding)
+        original_feature_names = list(X.columns)
+        
         # Handle categorical columns
         X = pd.get_dummies(X, drop_first=True)
         job_manager._add_log(job, "INFO", f"Features after encoding: {X.shape[1]}")
@@ -144,6 +148,9 @@ class MLService:
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         job_manager._add_log(job, "INFO", f"Train: {len(X_train)}, Test: {len(X_test)}")
         job_manager.update_phase(job, "data_validation", "completed")
+        
+        # Save feature names after encoding but BEFORE feature engineering
+        encoded_feature_names = list(X_train.columns)
         
         if job_manager.is_stop_requested(job):
             return {"status": "stopped"}
@@ -260,10 +267,14 @@ class MLService:
             fe_path = model_dir / "feature_engineer.pkl"
             feature_engineer.save(str(fe_path))
         
-        # Save feature names
-        feature_names = list(X_train.columns)
+        # Save feature names (after encoding, what model expects)
+        feature_names_after_fe = list(X_train.columns) if hasattr(X_train, 'columns') else encoded_feature_names
         fn_path = model_dir / "feature_names.pkl"
-        joblib.dump(feature_names, fn_path)
+        joblib.dump(feature_names_after_fe, fn_path)
+        
+        # Also save encoded feature names (before FE)
+        enc_fn_path = model_dir / "encoded_feature_names.pkl"
+        joblib.dump(encoded_feature_names, enc_fn_path)
         
         job_manager.update_phase(job, "model_training", "completed")
         
@@ -275,7 +286,7 @@ class MLService:
         test_pred = best_model.predict(X_test)
         
         # Calculate feature importance
-        feature_importance = self._get_feature_importance(best_model, feature_names)
+        feature_importance = self._get_feature_importance(best_model, encoded_feature_names)
         
         # Final metrics
         if problem_type == "classification":
@@ -287,6 +298,7 @@ class MLService:
                 "f1_score": round(f1_score(y_test, test_pred, average='weighted', zero_division=0), 4)
             }
             best_metric = "Accuracy"
+            final_score = final_metrics["accuracy"]
         else:
             from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
             final_metrics = {
@@ -296,8 +308,9 @@ class MLService:
                 "rmse": round(np.sqrt(mean_squared_error(y_test, test_pred)), 4)
             }
             best_metric = "R²"
+            final_score = final_metrics["r2"]
         
-        job_manager._add_log(job, "INFO", f"Final test {best_metric}: {best_score:.4f}")
+        job_manager._add_log(job, "INFO", f"Final test {best_metric}: {final_score:.4f}")
         job_manager.update_phase(job, "evaluation", "completed")
         job_manager.update_progress(job, progress=100)
         
@@ -307,16 +320,18 @@ class MLService:
             name=f"AutoML - {best_algorithm}",
             algorithm=best_algorithm,
             problem_type=problem_type,
-            score=best_score,
+            score=final_score,
             metric=best_metric,
             model_path=str(model_path),
             feature_engineer_path=str(fe_path) if fe_path else None,
-            feature_names=feature_names,
+            feature_names=encoded_feature_names,  # Features after encoding, before FE
+            original_feature_names=original_feature_names,  # Original columns
             metadata={
                 "cv_folds": cv_folds,
                 "use_feature_engineering": use_fe,
                 "dataset_path": dataset_path,
-                "target_column": target_column
+                "target_column": target_column,
+                "scaling_method": scaling_method if use_fe else None
             }
         )
         
@@ -326,7 +341,7 @@ class MLService:
             "status": "completed",
             "problem_type": problem_type,
             "best_algorithm": best_algorithm,
-            "best_score": best_score,
+            "best_score": final_score,
             "best_metric": best_metric,
             "leaderboard": leaderboard,
             "model_id": model_id,
@@ -336,7 +351,7 @@ class MLService:
             "target_column": target_column,
             "train_size": len(X_train),
             "test_size": len(X_test),
-            "n_features": len(feature_names),
+            "n_features": len(encoded_feature_names),
             "feature_importance": feature_importance,
             "metrics": final_metrics,
             "completed_at": datetime.now().isoformat()
@@ -370,7 +385,10 @@ class MLService:
         df = pd.read_csv(dataset_path)
         X = df.drop(columns=[target_column])
         y = df[target_column]
+        
+        original_feature_names = list(X.columns)
         X = pd.get_dummies(X, drop_first=True)
+        encoded_feature_names = list(X.columns)
         
         from sklearn.model_selection import train_test_split
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -383,7 +401,8 @@ class MLService:
         job_manager.update_progress(job, progress=25, phase="Feature Engineering")
         
         feature_engineer = None
-        if config.get("use_feature_engineering", False):
+        use_fe = config.get("use_feature_engineering", False)
+        if use_fe:
             scaling = config.get("scaling_method", "standard")
             feature_engineer = FeatureEngineer(scaling_method=scaling)
             X_train = feature_engineer.fit_transform(X_train, y_train)
@@ -468,11 +487,10 @@ class MLService:
             fe_path = model_dir / "feature_engineer.pkl"
             feature_engineer.save(str(fe_path))
         
-        feature_names = list(X_train.columns)
-        joblib.dump(feature_names, model_dir / "feature_names.pkl")
+        joblib.dump(encoded_feature_names, model_dir / "feature_names.pkl")
         
         # Feature importance
-        feature_importance = self._get_feature_importance(model, feature_names)
+        feature_importance = self._get_feature_importance(model, encoded_feature_names)
         
         job_manager.update_phase(job, "evaluation", "completed")
         job_manager.update_progress(job, progress=100)
@@ -487,7 +505,12 @@ class MLService:
             metric=metric,
             model_path=str(model_path),
             feature_engineer_path=str(fe_path) if fe_path else None,
-            feature_names=feature_names
+            feature_names=encoded_feature_names,
+            original_feature_names=original_feature_names,
+            metadata={
+                "use_feature_engineering": use_fe,
+                "target_column": target_column
+            }
         )
         
         return {
@@ -502,8 +525,8 @@ class MLService:
             "model_id": model_id,
             "model_path": str(model_path),
             "feature_engineer_path": str(fe_path) if fe_path else None,
-            "feature_names": feature_names,
-            "n_features": len(feature_names),
+            "feature_names": encoded_feature_names,
+            "n_features": len(encoded_feature_names),
             "dataset_id": request.get("dataset_id"),
             "target_column": target_column,
             "train_size": len(X_train),
@@ -524,36 +547,51 @@ class MLService:
         # Load model
         model = joblib.load(model_info["model_path"])
         
-        # Load feature names
+        # Get feature names (these are the encoded feature names)
         feature_names = model_info.get("feature_names", [])
         
-        # Prepare features
+        # Prepare features DataFrame
         X = pd.DataFrame([features])
+        
+        # Apply one-hot encoding (same as training)
         X = pd.get_dummies(X, drop_first=True)
         
-        # Ensure same features as training
+        # Align columns with training data
+        # Add missing columns with 0
         for col in feature_names:
             if col not in X.columns:
                 X[col] = 0
-        X = X[feature_names] if feature_names else X
         
-        # Load feature engineer if exists
+        # Keep only columns that were in training, in the same order
+        X = X[feature_names]
+        
+        # Apply feature engineering if it was used during training
         fe_path = model_info.get("feature_engineer_path")
         if fe_path and Path(fe_path).exists():
-            fe = FeatureEngineer.load(fe_path)
-            X = fe.transform(X)
+            try:
+                feature_engineer = FeatureEngineer.load(fe_path)
+                X = feature_engineer.transform(X)
+            except Exception as e:
+                print(f"Warning: Could not apply feature engineering: {e}")
         
-        # Predict
+        # Make prediction
         prediction = model.predict(X)[0]
+        
+        # Convert numpy types to Python types
+        if hasattr(prediction, 'item'):
+            prediction = prediction.item()
         
         result = {"prediction": prediction}
         
         # Get probabilities for classification
         if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(X)[0]
-            classes = model.classes_
-            result["probability"] = {str(c): round(p, 4) for c, p in zip(classes, proba)}
-            result["confidence"] = round(max(proba), 4)
+            try:
+                proba = model.predict_proba(X)[0]
+                classes = model.classes_
+                result["probability"] = {str(c): round(float(p), 4) for c, p in zip(classes, proba)}
+                result["confidence"] = round(float(max(proba)), 4)
+            except Exception as e:
+                print(f"Warning: Could not get probabilities: {e}")
         
         return result
     
@@ -566,19 +604,26 @@ class MLService:
         model = joblib.load(model_info["model_path"])
         feature_names = model_info.get("feature_names", [])
         
+        # Prepare data
         X = pd.DataFrame(data)
         X = pd.get_dummies(X, drop_first=True)
         
+        # Align columns
         for col in feature_names:
             if col not in X.columns:
                 X[col] = 0
-        X = X[feature_names] if feature_names else X
+        X = X[feature_names]
         
+        # Apply feature engineering if used
         fe_path = model_info.get("feature_engineer_path")
         if fe_path and Path(fe_path).exists():
-            fe = FeatureEngineer.load(fe_path)
-            X = fe.transform(X)
+            try:
+                feature_engineer = FeatureEngineer.load(fe_path)
+                X = feature_engineer.transform(X)
+            except Exception as e:
+                print(f"Warning: Could not apply feature engineering: {e}")
         
+        # Predict
         predictions = model.predict(X).tolist()
         
         result = {
@@ -587,12 +632,15 @@ class MLService:
         }
         
         if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(X)
-            classes = model.classes_
-            result["probabilities"] = [
-                {str(c): round(p, 4) for c, p in zip(classes, row)}
-                for row in proba
-            ]
+            try:
+                proba = model.predict_proba(X)
+                classes = model.classes_
+                result["probabilities"] = [
+                    {str(c): round(float(p), 4) for c, p in zip(classes, row)}
+                    for row in proba
+                ]
+            except Exception as e:
+                print(f"Warning: Could not get probabilities: {e}")
         
         return result
     
@@ -666,6 +714,12 @@ class MLService:
                 importances = np.abs(model.coef_).flatten()
             else:
                 return []
+            
+            # Handle case where importances length doesn't match feature_names
+            if len(importances) != len(feature_names):
+                print(f"Warning: Feature importance length ({len(importances)}) doesn't match feature names ({len(feature_names)})")
+                # Use generic names
+                feature_names = [f"feature_{i}" for i in range(len(importances))]
             
             # Normalize
             total = sum(importances)
