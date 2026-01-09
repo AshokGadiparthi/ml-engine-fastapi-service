@@ -102,7 +102,7 @@ async def get_job_progress(job_id: str):
     return JobProgress(**progress)
 
 
-@router.get("/jobs/{job_id}/results", response_model=AutoMLResult)
+@router.get("/jobs/{job_id}/results")
 async def get_job_results(job_id: str):
     """Get AutoML job results (only available when completed)."""
     job = job_manager.get_job(job_id)
@@ -118,28 +118,16 @@ async def get_job_results(job_id: str):
     if not job.result:
         raise HTTPException(status_code=500, detail="Results not available")
     
-    return AutoMLResult(
-        job_id=job.result["job_id"],
-        status=JobStatus.COMPLETED,
-        problem_type=ProblemType(job.result["problem_type"]),
-        best_algorithm=job.result["best_algorithm"],
-        best_score=job.result["best_score"],
-        best_metric=job.result["best_metric"],
-        leaderboard=job.result["leaderboard"],
-        model_id=job.result["model_id"],
-        model_path=job.result["model_path"],
-        feature_engineer_path=job.result.get("feature_engineer_path"),
-        dataset_id=job.result.get("dataset_id", ""),
-        target_column=job.result["target_column"],
-        train_size=job.result["train_size"],
-        test_size=job.result["test_size"],
-        n_features=job.result["n_features"],
-        feature_importance=job.result["feature_importance"],
-        total_training_time_seconds=sum(
-            r.get("training_time_seconds", 0) for r in job.result["leaderboard"]
-        ),
-        completed_at=datetime.fromisoformat(job.result["completed_at"])
+    # Return result directly - simpler and more reliable
+    result = job.result.copy()
+    result["status"] = "completed"
+    
+    # Calculate total training time
+    result["total_training_time_seconds"] = sum(
+        r.get("training_time_seconds", 0) for r in result.get("leaderboard", [])
     )
+    
+    return result
 
 
 @router.post("/jobs/{job_id}/stop")
