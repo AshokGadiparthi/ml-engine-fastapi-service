@@ -11,6 +11,7 @@ from app.models.schemas import (
     JobStatus, ProblemType
 )
 from app.services import job_manager, ml_service
+from app.services.job_manager import JobStatus as JMJobStatus
 from app.config import settings
 
 router = APIRouter(prefix="/training", tags=["Training"])
@@ -141,7 +142,7 @@ async def get_job_results(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    if job.status != job_manager.JobStatus.COMPLETED:
+    if job.status != JMJobStatus.COMPLETED:
         raise HTTPException(
             status_code=400,
             detail=f"Job not completed. Current status: {job.status.value}"
