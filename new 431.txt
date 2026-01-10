@@ -1,30 +1,14 @@
-3. Train New Model (without old registry conflicts)
-bash# Delete old models registry (clean start)
-rm -rf /home/ashok/work/latest/ml-engine-fastapi-service/models/*
+# Test FastAPI directly
+curl http://localhost:8000/health
 
-# Train new model
-curl -X POST "http://192.168.1.147:8000/api/automl/start" \
+# Test Spring Boot → FastAPI training (use a real dataset ID from your DB)
+curl -X POST http://localhost:8080/api/training/jobs \
   -H "Content-Type: application/json" \
   -d '{
-    "dataset_id": "loan",
-    "dataset_path": "/home/ashok/work/latest/kedro-ml-engine/sample_data.csv",
-    "target_column": "loan_approved",
-    "problem_type": "classification",
-    "use_feature_engineering": true
-  }'
-4. Wait for Training & Get Model ID
-bash# Check progress
-curl "http://192.168.1.147:8000/api/automl/jobs/{JOB_ID}/progress"
-
-# List models after completion
-curl "http://192.168.1.147:8000/api/models"
-5. Test Prediction
-bashcurl -X POST "http://192.168.1.147:8000/api/predictions/realtime/{MODEL_ID}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "age": 35,
-    "income": 75000,
-    "credit_score": 720,
-    "education": "Bachelor",
-    "employment": "Employed"
+    "experimentName": "Test Training",
+    "datasetId": "9127e45b-0ebe-4efd-a2b1-c1526aee2d29",
+    "algorithm": "random_forest",
+    "targetVariable": "loan_approved",
+    "problemType": "CLASSIFICATION",
+    "projectId": "6068cbcd-729c-4b5c-b50a-c4f1108fa93a"
   }'
