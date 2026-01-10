@@ -24,15 +24,21 @@ class JobStatus(str, Enum):
 class Algorithm(str, Enum):
     # Classification
     LOGISTIC = "logistic"
+    LOGISTIC_REGRESSION = "logistic_regression"  # Spring Boot sends this
     RANDOM_FOREST = "random_forest"
     XGBOOST = "xgboost"
     SVM = "svm"
     GRADIENT_BOOSTING = "gradient_boosting"
+    DECISION_TREE = "decision_tree"
     # Regression
     LINEAR = "linear"
+    LINEAR_REGRESSION = "linear_regression"  # Spring Boot sends this
     RIDGE = "ridge"
     LASSO = "lasso"
     SVR = "svr"
+    RANDOM_FOREST_REGRESSOR = "random_forest_regressor"
+    GRADIENT_BOOSTING_REGRESSOR = "gradient_boosting_regressor"
+    XGBOOST_REGRESSOR = "xgboost_regressor"
 
 
 # ============ TRAINING REQUESTS ============
@@ -52,13 +58,13 @@ class TrainingConfig(BaseModel):
 
 class TrainingRequest(BaseModel):
     """Request to start manual training."""
-    dataset_id: str
+    dataset_id: Optional[str] = None  # Optional for Spring Boot compatibility
     dataset_path: Optional[str] = None
     target_column: str
-    algorithm: Algorithm
-    problem_type: ProblemType
+    algorithm: str  # Accept string instead of enum for flexibility
+    problem_type: str  # Accept string instead of enum for flexibility
     experiment_name: Optional[str] = None
-    config: Optional[TrainingConfig] = None
+    config: Optional[Dict[str, Any]] = None  # Accept dict for flexibility
     
     class Config:
         use_enum_values = True

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from app.models.schemas import (
     TrainingRequest, TrainingConfig, JobResponse, JobProgress, TrainingResult,
-    JobStatus, ProblemType, Algorithm
+    JobStatus, ProblemType
 )
 from app.services import job_manager, ml_service
 from app.config import settings
@@ -24,15 +24,36 @@ async def start_training(request: TrainingRequest):
     Use this when you want to train a specific algorithm
     with specific hyperparameters (vs AutoML which tries all).
     """
-    # Validate dataset
+    # Validate dataset - either dataset_path or dataset_id must be provided
     dataset_path = request.dataset_path
+    if not dataset_path and request.dataset_id:
+        # Try to find dataset by ID in uploads
+        dataset_path = str(settings.UPLOADS_DIR / f"{request.dataset_id}.csv")
+        if not Path(dataset_path).exists():
+            # Try without .csv extension
+            for ext in ['', '.csv', '.xlsx', '.parquet']:
+                potential_path = str(settings.UPLOADS_DIR / f"{request.dataset_id}{ext}")
+                if Path(potential_path).exists():
+                    dataset_path = potential_path
+                    break
+    
     if not dataset_path or not Path(dataset_path).exists():
-        raise HTTPException(status_code=400, detail=f"Dataset not found: {dataset_path}")
+        raise HTTPException(status_code=400, detail=f"Dataset not found: {dataset_path or request.dataset_id}")
+    
+    # Normalize algorithm name
+    algorithm = request.algorithm.lower().strip() if request.algorithm else "random_forest"
+    problem_type = request.problem_type.lower().strip() if request.problem_type else "classification"
     
     # Build request data
-    request_data = request.model_dump()
-    if request.config:
-        request_data["config"] = request.config.model_dump()
+    request_data = {
+        "dataset_id": request.dataset_id or str(uuid.uuid4()),
+        "dataset_path": dataset_path,
+        "target_column": request.target_column,
+        "algorithm": algorithm,
+        "problem_type": problem_type,
+        "experiment_name": request.experiment_name,
+        "config": request.config or {}
+    }
     
     # Create job
     job = job_manager.create_job(
@@ -46,7 +67,7 @@ async def start_training(request: TrainingRequest):
     return JobResponse(
         job_id=job.id,
         status=JobStatus.QUEUED,
-        message=f"Training job started with {request.algorithm}",
+        message=f"Training job started with {algorithm}",
         created_at=job.created_at
     )
 
@@ -55,8 +76,8 @@ async def start_training(request: TrainingRequest):
 async def start_training_with_file(
     file: UploadFile = File(...),
     target_column: str = Form(...),
-    algorithm: Algorithm = Form(...),
-    problem_type: ProblemType = Form(...),
+    algorithm: str = Form(...),
+    problem_type: str = Form(...),
     use_feature_engineering: bool = Form(False),
     scaling_method: Optional[str] = Form("standard"),
     cv_folds: int = Form(5),
@@ -72,13 +93,17 @@ async def start_training_with_file(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
+    # Normalize values
+    algorithm = algorithm.lower().strip()
+    problem_type = problem_type.lower().strip()
+    
     # Create request
     request_data = {
         "dataset_id": file_id,
         "dataset_path": str(file_path),
         "target_column": target_column,
-        "algorithm": algorithm.value,
-        "problem_type": problem_type.value,
+        "algorithm": algorithm,
+        "problem_type": problem_type,
         "config": {
             "use_feature_engineering": use_feature_engineering,
             "scaling_method": scaling_method,
@@ -94,7 +119,7 @@ async def start_training_with_file(
     return JobResponse(
         job_id=job.id,
         status=JobStatus.QUEUED,
-        message=f"Training job started with {algorithm.value}",
+        message=f"Training job started with {algorithm}",
         created_at=job.created_at
     )
 

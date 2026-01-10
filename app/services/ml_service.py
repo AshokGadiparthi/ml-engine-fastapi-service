@@ -680,25 +680,36 @@ class MLService:
         from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
         from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
         from sklearn.svm import SVC, SVR
+        from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
         import xgboost as xgb
+        
+        # Normalize algorithm name
+        algorithm = algorithm.lower().strip()
         
         if problem_type == "classification":
             models = {
                 "logistic": LogisticRegression(max_iter=1000, random_state=42),
+                "logistic_regression": LogisticRegression(max_iter=1000, random_state=42),
                 "random_forest": RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1),
                 "xgboost": xgb.XGBClassifier(n_estimators=100, learning_rate=0.1, random_state=42, n_jobs=-1, eval_metric='logloss'),
                 "svm": SVC(kernel='rbf', probability=True, random_state=42),
-                "gradient_boosting": GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, random_state=42)
+                "gradient_boosting": GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, random_state=42),
+                "decision_tree": DecisionTreeClassifier(random_state=42)
             }
         else:
             models = {
                 "linear": LinearRegression(),
+                "linear_regression": LinearRegression(),
                 "ridge": Ridge(alpha=1.0, random_state=42),
                 "lasso": Lasso(alpha=1.0, random_state=42),
                 "random_forest": RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1),
+                "random_forest_regressor": RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1),
                 "xgboost": xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42, n_jobs=-1),
+                "xgboost_regressor": xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42, n_jobs=-1),
                 "gradient_boosting": GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, random_state=42),
-                "svr": SVR(kernel='rbf')
+                "gradient_boosting_regressor": GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, random_state=42),
+                "svr": SVR(kernel='rbf'),
+                "decision_tree": DecisionTreeRegressor(random_state=42)
             }
         
         return models.get(algorithm)
