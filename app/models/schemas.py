@@ -362,6 +362,43 @@ class DatasetUploadResponse(BaseModel):
     message: str
 
 
+# ============ EDA ANALYSIS ============
+
+class EDARequest(BaseModel):
+    """Request for EDA analysis."""
+    dataset_id: str
+    target_column: Optional[str] = None
+    sample_rows: Optional[int] = None
+
+
+class EDAResponse(BaseModel):
+    """Response for EDA analysis."""
+    eda_id: str
+    dataset_id: str
+    status: str
+    quality_score: float
+    insights_count: int
+    features_analyzed: int
+    timestamp: str
+
+
+class EDASummary(BaseModel):
+    """Executive summary of EDA analysis."""
+    dataset_id: str
+    timestamp: str
+    quality_score: float
+    assessment: str
+    completeness: float
+    uniqueness: float
+    features: int
+    insights_count: int
+    issues_critical: int
+    issues_high: int
+    issues_medium: int
+    top_concern: Optional[str] = None
+    recommendation: Optional[str] = None
+
+
 # ============ HEALTH CHECK ============
 
 class HealthCheck(BaseModel):

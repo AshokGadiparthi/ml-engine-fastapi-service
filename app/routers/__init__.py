@@ -4,3 +4,4 @@ from .training import router as training_router
 from .predictions import router as predictions_router
 from .models import router as models_router
 from .datasets import router as datasets_router
+from .eda import router as eda_router

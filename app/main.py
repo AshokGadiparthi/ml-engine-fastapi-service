@@ -27,7 +27,8 @@ from app.routers import (
     training_router,
     predictions_router,
     models_router,
-    datasets_router
+    datasets_router,
+    eda_router
 )
 
 # Create FastAPI app
@@ -37,6 +38,12 @@ app = FastAPI(
 ## ML Engine API
 
 Complete machine learning pipeline API providing:
+
+### 🔍 EDA Analysis (NEW!)
+- Data quality assessment
+- Feature analysis
+- Insight generation
+- Feature importance ranking
 
 ### 🤖 AutoML
 - Automatic algorithm selection
@@ -82,6 +89,7 @@ app.include_router(training_router, prefix="/api")
 app.include_router(predictions_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(datasets_router, prefix="/api")
+app.include_router(eda_router, prefix="/api")
 
 
 # Health check endpoint
@@ -90,15 +98,25 @@ async def health_check():
     """Health check endpoint."""
     # Check if ml_engine is available
     ml_engine_status = "ok"
+    eda_status = "ok"
+    
     try:
         from ml_engine.automl import automl_find_best_model
     except ImportError:
         ml_engine_status = "error: ml_engine not found"
     
+    try:
+        from ml_engine.eda_analytics_engine import EDAAnalyticsEngine
+    except ImportError:
+        eda_status = "error: EDA engine not found"
+    
+    overall = "ok" if ml_engine_status == "ok" and eda_status == "ok" else "degraded"
+    
     return {
-        "status": "ok",
+        "status": overall,
         "version": settings.APP_VERSION,
         "ml_engine_status": ml_engine_status,
+        "eda_status": eda_status,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -112,6 +130,7 @@ async def root():
         "docs": "/docs",
         "health": "/health",
         "endpoints": {
+            "eda": "/api/eda",
             "automl": "/api/automl",
             "training": "/api/training",
             "predictions": "/api/predictions",
