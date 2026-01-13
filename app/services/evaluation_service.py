@@ -48,7 +48,7 @@ class EvaluationService:
             y_pred_proba: Predicted probabilities
             threshold: Classification threshold
             target_names: Class names (list, not tuple)
-        
+
         Returns:
             Evaluation result with metrics and confusion matrix
         """
@@ -294,7 +294,7 @@ class EvaluationService:
             cost_fp: Cost of false positive
             cost_fn: Cost of false negative
             revenue_tp: Revenue from true positive
-        
+
         Returns:
             Complete evaluation package
         """
