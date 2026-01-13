@@ -48,7 +48,7 @@ async def evaluate_with_threshold(
         y_pred_proba: Predicted probabilities
         threshold: Classification threshold
         target_names: Class names
-    
+
     Returns:
         Metrics, confusion matrix, and rates at new threshold
     """
@@ -58,7 +58,7 @@ async def evaluate_with_threshold(
         
         y_true = np.array(y_true, dtype=int)
         y_pred_proba = np.array(y_pred_proba, dtype=float)
-        
+
         result = evaluation_service.evaluate_with_threshold(
             y_true=y_true,
             y_pred_proba=y_pred_proba,
@@ -99,7 +99,7 @@ async def calculate_business_impact(
         cost_false_negative: Cost of FN in dollars
         revenue_true_positive: Revenue from TP in dollars
         volume: Prediction volume
-    
+
     Returns:
         Costs, revenue, and net profit analysis
     """
@@ -194,7 +194,7 @@ async def assess_production_readiness(
         learning_curve: Learning curve analysis (optional)
         business_impact: Business impact metrics (optional)
         feature_importance: Feature importance (optional)
-    
+
     Returns:
         Readiness assessment with pass/fail status
     """
@@ -210,7 +210,7 @@ async def assess_production_readiness(
         learning_curve = learning_curve or {"gap": 0.0, "overfitting_status": "unknown"}
         business_impact = business_impact or {"financial": {"net_profit": 0}}
         feature_importance = feature_importance or {"total_features": 0, "features": []}
-        
+
         result = evaluation_service.assess_production_readiness(
             evaluation_result=eval_result,
             learning_curve=learning_curve,
