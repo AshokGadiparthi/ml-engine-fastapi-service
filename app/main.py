@@ -28,7 +28,8 @@ from app.routers import (
     predictions_router,
     models_router,
     datasets_router,
-    eda_router
+    eda_router,
+    evaluation_router
 )
 
 # Create FastAPI app
@@ -38,6 +39,13 @@ app = FastAPI(
 ## ML Engine API
 
 Complete machine learning pipeline API providing:
+
+### ✨ Enhanced Evaluation (Layer 3) (NEW!)
+- Real-time threshold adjustment
+- Business impact calculation (cost/profit)
+- Optimal threshold finding
+- Production readiness assessment (18-point checklist)
+- Complete model evaluation in one call
 
 ### 🔍 EDA Analysis (NEW!)
 - Data quality assessment
@@ -90,6 +98,7 @@ app.include_router(predictions_router, prefix="/api")
 app.include_router(models_router, prefix="/api")
 app.include_router(datasets_router, prefix="/api")
 app.include_router(eda_router, prefix="/api")
+app.include_router(evaluation_router, prefix="/api")
 
 
 # Health check endpoint
@@ -99,6 +108,7 @@ async def health_check():
     # Check if ml_engine is available
     ml_engine_status = "ok"
     eda_status = "ok"
+    layer3_status = "ok"
     
     try:
         from ml_engine.automl import automl_find_best_model
@@ -110,13 +120,19 @@ async def health_check():
     except ImportError:
         eda_status = "error: EDA engine not found"
     
-    overall = "ok" if ml_engine_status == "ok" and eda_status == "ok" else "degraded"
+    try:
+        from ml_engine.evaluation_enhanced import evaluate_with_threshold
+    except ImportError:
+        layer3_status = "error: Layer 3 not found"
+    
+    overall = "ok" if all(s == "ok" for s in [ml_engine_status, eda_status, layer3_status]) else "degraded"
     
     return {
         "status": overall,
         "version": settings.APP_VERSION,
         "ml_engine_status": ml_engine_status,
         "eda_status": eda_status,
+        "layer3_status": layer3_status,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -130,6 +146,7 @@ async def root():
         "docs": "/docs",
         "health": "/health",
         "endpoints": {
+            "evaluation": "/api/evaluation",
             "eda": "/api/eda",
             "automl": "/api/automl",
             "training": "/api/training",
