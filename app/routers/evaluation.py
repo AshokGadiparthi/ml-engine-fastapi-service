@@ -89,14 +89,14 @@ async def calculate_business_impact(
     Args:
         model_id: Model identifier
         request: Business metrics request with evaluation_result from /threshold endpoint
-    
+
     Returns:
         Costs, revenue, and net profit analysis
     """
     try:
         if not request.evaluation_result:
             raise ValueError("evaluation_result is required - get this from /threshold endpoint first")
-        
+
         # Ensure evaluation_result has required structure
         eval_result = request.evaluation_result
         if "confusion_matrix" not in eval_result:
@@ -104,7 +104,7 @@ async def calculate_business_impact(
                 "Invalid evaluation_result structure. Make sure it comes from /threshold endpoint. "
                 "Required keys: confusion_matrix, metrics, rates"
             )
-        
+
         result = evaluation_service.calculate_business_impact(
             evaluation_result=eval_result,
             cost_false_positive=request.cost_false_positive,
@@ -171,7 +171,6 @@ async def get_optimal_threshold(
 @router.post("/production-readiness/{model_id}", response_model=ProductionReadinessResponse)
 async def assess_production_readiness(
     model_id: str,
-    request: ProductionReadinessRequest
 ):
     """
     Assess model production readiness with 18-point checklist.
@@ -182,25 +181,25 @@ async def assess_production_readiness(
     Args:
         model_id: Model identifier
         request: Production readiness request with evaluation_result
-    
+
     Returns:
         Readiness assessment with pass/fail status
     """
     try:
         eval_result = request.evaluation_result
-        
+
         # Validate evaluation_result structure
         if "metrics" not in eval_result:
             raise ValueError(
                 "Invalid evaluation_result structure. Make sure it comes from /threshold endpoint. "
                 "Required keys: confusion_matrix, metrics, rates"
             )
-        
+
         # Use defaults if not provided
         learning_curve = request.learning_curve or {"gap": 0.0, "overfitting_status": "unknown"}
         business_impact = request.business_impact or {"financial": {"net_profit": 0}}
         feature_importance = request.feature_importance or {"total_features": 0, "features": []}
-        
+
         result = evaluation_service.assess_production_readiness(
             evaluation_result=eval_result,
             learning_curve=learning_curve,
