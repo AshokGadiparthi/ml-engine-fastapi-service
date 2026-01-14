@@ -322,7 +322,7 @@ async def complete_evaluation(
             cost_fp=float(cost_fp),
             cost_fn=float(cost_fn),
             revenue_tp=float(revenue_tp),
-            feature_names=feature_names  # ✅ ADDED
+            feature_names=load_feature_names()
         )
         
         # Convert NaN values to None for JSON serialization
@@ -330,9 +330,12 @@ async def complete_evaluation(
         result["model_id"] = model_id
         return result
     except ValueError as e:
+        logger.error(f"ValueError: {e}", exc_info=True)  # ✅ Add exc_info
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Complete evaluation failed: {e}")
+        logger.error(f"Complete evaluation failed: {e}", exc_info=True)  # ✅ Add exc_info
+        import traceback
+        traceback.print_exc()  # ✅ Print full traceback
         raise HTTPException(status_code=500, detail=str(e))
 
 
