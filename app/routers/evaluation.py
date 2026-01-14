@@ -39,27 +39,20 @@ def convert_nan_to_none(obj):
     return obj
 
 
-def load_feature_names(model_id: str) -> Optional[List[str]]:
-    """Load real feature names from saved model metadata."""
+def load_feature_names() -> list[str] | None:
     paths_to_try = [
-        "/home/ashok/work/latest/kedro-ml-engine/models/feature_names.pkl",
-        "../../kedro-ml-engine/models/feature_names.pkl",
-        "../kedro-ml-engine/models/feature_names.pkl",
+        Path.home() / "work/latest/kedro-ml-engine/models/feature_names.pkl",
+        Path(__file__).resolve().parents[2] / "models" / "feature_names.pkl",  # adjust if needed
     ]
 
-    for path in paths_to_try:
-        if os.path.exists(path):
-            try:
-                feature_names = joblib.load(path)
-                # ✅ Sanitize feature names - replace hyphens and special chars
-                feature_names = [name.replace('-', '_').replace(' ', '_') for name in feature_names]
-                logger.info(f"✅ Loaded {len(feature_names)} feature names from {path}")
-                logger.info(f"   Sanitized names: {feature_names}")
-                return feature_names
-            except Exception as e:
-                logger.warning(f"Could not load from {path}: {e}")
+    for p in paths_to_try:
+        if p.exists():
+            feature_names = joblib.load(p)
+            feature_names = [str(n).replace("-", "_").replace(" ", "_") for n in feature_names]
+            logger.info(f"Loaded {len(feature_names)} feature names from {p}")
+            return feature_names
 
-    logger.warning("Could not find feature_names.pkl, will use generic names")
+    logger.warning("feature_names.pkl not found")
     return None
 
 
@@ -301,7 +294,7 @@ async def complete_evaluation(
         revenue_tp = body.get("revenue_true_positive", 1000)
         
         # ✅ FIX: Load feature names from saved model metadata
-        feature_names = load_feature_names(model_id)
+        #feature_names = load_feature_names()
         
         # ✅ FIX: Pass feature_names to evaluation service
         result = evaluation_service.complete_evaluation(
@@ -315,7 +308,7 @@ async def complete_evaluation(
             cost_fp=float(cost_fp),
             cost_fn=float(cost_fn),
             revenue_tp=float(revenue_tp),
-            feature_names=load_feature_names(model_id)
+            feature_names=load_feature_names()
         )
         
         # Convert NaN values to None for JSON serialization
