@@ -308,7 +308,8 @@ async def complete_evaluation(
         revenue_tp = body.get("revenue_true_positive", 1000)
         
         # ✅ FIX: Load feature names from saved model metadata
-        feature_names = load_feature_names(model_id)
+        #feature_names = load_feature_names(model_id)
+        feature_names = load_feature_names()
         
         # ✅ FIX: Pass feature_names to evaluation service
         result = evaluation_service.complete_evaluation(
