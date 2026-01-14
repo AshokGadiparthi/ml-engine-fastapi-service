@@ -1,14 +1,64 @@
-# Test FastAPI directly
-curl http://localhost:8000/health
-
-# Test Spring Boot → FastAPI training (use a real dataset ID from your DB)
-curl -X POST http://localhost:8080/api/training/jobs \
+curl -X POST http://192.168.1.147:8000/api/evaluation/threshold/e1dba381-b592-4239-990c-fef17b6d64f4 \
   -H "Content-Type: application/json" \
   -d '{
-    "experimentName": "Test Training",
-    "datasetId": "9127e45b-0ebe-4efd-a2b1-c1526aee2d29",
-    "algorithm": "random_forest",
-    "targetVariable": "loan_approved",
-    "problemType": "CLASSIFICATION",
-    "projectId": "6068cbcd-729c-4b5c-b50a-c4f1108fa93a"
+    "y_true": [0, 1, 1, 0, 1],
+    "y_pred_proba": [0.1, 0.9, 0.8, 0.2, 0.7],
+    "threshold": 0.5,
+    "target_names": ["negative", "positive"]
+  }'
+
+
+curl -X POST http://192.168.1.147:8000/api/evaluation/business-impact/e1dba381-b592-4239-990c-fef17b6d64f4 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "evaluation_result": {
+      "confusion_matrix": {
+        "tn": 1, "fp": 0, "fn": 0, "tp": 4, "total": 5
+      },
+      "metrics": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "auc_roc": 1.0
+      },
+      "rates": {
+        "false_positive_rate": 0.0,
+        "false_negative_rate": 0.0,
+        "true_positive_rate": 1.0,
+        "true_negative_rate": 1.0
+      }
+    },
+    "cost_false_positive": 500,
+    "cost_false_negative": 2000,
+    "revenue_true_positive": 1000,
+    "volume": 10000
+  }'
+
+
+
+curl -X POST http://192.168.1.147:8000/api/evaluation/production-readiness/e1dba381-b592-4239-990c-fef17b6d64f4 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "eval_result": {
+      "confusion_matrix": {
+        "tn": 1, "fp": 0, "fn": 0, "tp": 4, "total": 5
+      },
+      "metrics": {
+        "accuracy": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "auc_roc": 1.0
+      },
+      "rates": {
+        "false_positive_rate": 0.0,
+        "false_negative_rate": 0.0,
+        "true_positive_rate": 1.0,
+        "true_negative_rate": 1.0
+      }
+    },
+    "learning_curve": null,
+    "business_impact": null,
+    "feature_importance": null
   }'
