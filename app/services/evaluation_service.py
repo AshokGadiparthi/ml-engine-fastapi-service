@@ -1,9 +1,11 @@
 """
-Layer 3 Evaluation Service Integration
+Layer 3 Evaluation Service Integration - FIXED VERSION
 =======================================
 
 Wraps Layer 3 Enhanced Evaluation functions for FastAPI.
 Provides business-focused evaluation with real-time threshold adjustment.
+
+FIX: Now accepts and passes feature_names parameter through the pipeline
 """
 import logging
 import numpy as np
@@ -275,13 +277,17 @@ class EvaluationService:
         threshold: float = 0.5,
         cost_fp: float = 500,
         cost_fn: float = 2000,
-        revenue_tp: float = 1000
+        revenue_tp: float = 1000,
+        feature_names: Optional[List[str]] = None  # ✅ ADDED
     ) -> Dict[str, Any]:
         """
         Complete model evaluation in one call.
         
         Returns all metrics: evaluation, business impact, curves,
         learning curve, feature importance, optimal threshold, readiness.
+        
+        FIXED: Now accepts and passes feature_names to ensure real feature
+        names are returned instead of generic "feature_0" placeholders.
         
         Args:
             model: Trained model
@@ -294,12 +300,15 @@ class EvaluationService:
             cost_fp: Cost of false positive
             cost_fn: Cost of false negative
             revenue_tp: Revenue from true positive
+            feature_names: Feature names (optional, for real feature labels)
         
         Returns:
-            Complete evaluation package
+            Complete evaluation package with all metrics
         """
         try:
             self.logger.info("Running complete model evaluation...")
+            
+            # ✅ FIX: Pass feature_names to complete_model_evaluation
             result = complete_model_evaluation(
                 model=model,
                 X_test=X_test,
@@ -310,7 +319,8 @@ class EvaluationService:
                 threshold=threshold,
                 cost_fp=cost_fp,
                 cost_fn=cost_fn,
-                revenue_tp=revenue_tp
+                revenue_tp=revenue_tp,
+                feature_names=feature_names  # ✅ ADDED
             )
             self.logger.info(f"✅ Complete evaluation finished!")
             return result

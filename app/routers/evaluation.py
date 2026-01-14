@@ -1,14 +1,18 @@
 """
-Layer 3 Evaluation API Router
+Layer 3 Evaluation API Router - FIXED VERSION
 =============================
 
 Exposes Layer 3 Enhanced Evaluation functions as REST endpoints.
+
+FIX: Now loads and passes real feature names to evaluation functions
 """
 from fastapi import APIRouter, HTTPException, Body
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import logging
 import numpy as np
 import json
+import os
+import joblib
 
 from app.services import evaluation_service
 
@@ -34,6 +38,41 @@ def convert_nan_to_none(obj):
         return obj.item() if isinstance(obj, np.ndarray) else int(obj)
     return obj
 
+
+def load_feature_names(model_id: str) -> Optional[List[str]]:
+    """
+    Load feature names from saved model metadata.
+    
+    Args:
+        model_id: Model identifier (used for logging only in this case)
+    
+    Returns:
+        List of feature names, or None if not found
+    """
+    # Try multiple possible paths for feature names file
+    possible_paths = [
+        "models/feature_names.pkl",
+        f"models/{model_id}/feature_names.pkl",
+        "model_registry/feature_names.pkl"
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                feature_names = joblib.load(path)
+                logger.info(f"✅ Loaded {len(feature_names)} feature names from {path}")
+                return feature_names
+            except Exception as e:
+                logger.warning(f"Could not load feature names from {path}: {e}")
+                continue
+    
+    logger.warning(f"Could not find feature names file. Tried: {possible_paths}")
+    return None
+
+
+# ============================================================================
+# THRESHOLD EVALUATION
+# ============================================================================
 
 @router.post("/threshold/{model_id}")
 async def evaluate_with_threshold(
@@ -81,6 +120,10 @@ async def evaluate_with_threshold(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# BUSINESS IMPACT
+# ============================================================================
+
 @router.post("/business-impact/{model_id}")
 async def calculate_business_impact(
     model_id: str,
@@ -103,31 +146,23 @@ async def calculate_business_impact(
     }
     """
     try:
-        evaluation_result = body.get("evaluation_result")
-        
-        if not evaluation_result:
-            raise ValueError("evaluation_result is required - get this from /threshold endpoint first")
-        
-        if "confusion_matrix" not in evaluation_result:
-            raise ValueError(
-                "Invalid evaluation_result structure. Make sure it comes from /threshold endpoint. "
-                "Required keys: confusion_matrix, metrics, rates"
-            )
-        
+        eval_result = body.get("evaluation_result")
         cost_fp = body.get("cost_false_positive", 500)
         cost_fn = body.get("cost_false_negative", 2000)
         revenue_tp = body.get("revenue_true_positive", 1000)
         volume = body.get("volume", 10000)
         
+        if not eval_result:
+            raise ValueError("evaluation_result is required")
+        
         result = evaluation_service.calculate_business_impact(
-            evaluation_result=evaluation_result,
+            evaluation_result=eval_result,
             cost_false_positive=float(cost_fp),
             cost_false_negative=float(cost_fn),
             revenue_true_positive=float(revenue_tp),
             volume=float(volume)
         )
         
-        # Convert NaN values to None for JSON serialization
         result = convert_nan_to_none(result)
         result["model_id"] = model_id
         return result
@@ -138,23 +173,33 @@ async def calculate_business_impact(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# OPTIMAL THRESHOLD
+# ============================================================================
+
 @router.post("/optimal-threshold/{model_id}")
 async def get_optimal_threshold(
     model_id: str,
-    request: Optional[Dict[str, Any]] = Body(None)
+    body: Dict[str, Any] = Body(...)
 ):
     """
     Find optimal threshold for profit maximization.
+    
+    JSON Body:
+    {
+      "y_true": [0, 1, 1, 0],
+      "y_pred_proba": [0.1, 0.9, 0.8, 0.2],
+      "cost_false_positive": 500,
+      "cost_false_negative": 2000,
+      "revenue_true_positive": 1000
+    }
     """
     try:
-        if request is None:
-            request = {}
-            
-        y_true = request.get("y_true")
-        y_pred_proba = request.get("y_pred_proba")
-        cost_fp = request.get("cost_false_positive", 500)
-        cost_fn = request.get("cost_false_negative", 2000)
-        revenue_tp = request.get("revenue_true_positive", 1000)
+        y_true = body.get("y_true")
+        y_pred_proba = body.get("y_pred_proba")
+        cost_fp = body.get("cost_false_positive", 500)
+        cost_fn = body.get("cost_false_negative", 2000)
+        revenue_tp = body.get("revenue_true_positive", 1000)
         
         if not y_true or not y_pred_proba:
             raise ValueError("y_true and y_pred_proba are required")
@@ -170,7 +215,6 @@ async def get_optimal_threshold(
             revenue_true_positive=float(revenue_tp)
         )
         
-        # Convert NaN values to None for JSON serialization
         result = convert_nan_to_none(result)
         result["model_id"] = model_id
         return result
@@ -181,34 +225,34 @@ async def get_optimal_threshold(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# PRODUCTION READINESS
+# ============================================================================
+
 @router.post("/production-readiness/{model_id}")
 async def assess_production_readiness(
     model_id: str,
     body: Dict[str, Any] = Body(...)
 ):
     """
-    Assess model production readiness with 18-point checklist.
+    Assess production readiness with 19-point checklist.
     
     JSON Body:
     {
-      "eval_result": {...},  or "evaluation_result": {...}
-      "learning_curve": null,
-      "business_impact": null,
-      "feature_importance": null
+      "evaluation_result": {...},
+      "learning_curve": {...},
+      "business_impact": {...},
+      "feature_importance": {...}
     }
     """
     try:
-        eval_result = body.get("eval_result") or body.get("evaluation_result")
+        eval_result = body.get("evaluation_result")
+        learning_curve = body.get("learning_curve")
+        business_impact = body.get("business_impact")
+        feature_importance = body.get("feature_importance")
         
-        if not eval_result or "metrics" not in eval_result:
-            raise ValueError(
-                "Invalid evaluation_result structure. Make sure it comes from /threshold endpoint. "
-                "Required keys: confusion_matrix, metrics, rates"
-            )
-        
-        learning_curve = body.get("learning_curve") or {"gap": 0.0, "overfitting_status": "unknown"}
-        business_impact = body.get("business_impact") or {"financial": {"net_profit": 0}}
-        feature_importance = body.get("feature_importance") or {"total_features": 0, "features": []}
+        if not all([eval_result, learning_curve, business_impact, feature_importance]):
+            raise ValueError("All result types are required")
         
         result = evaluation_service.assess_production_readiness(
             evaluation_result=eval_result,
@@ -217,7 +261,6 @@ async def assess_production_readiness(
             feature_importance=feature_importance
         )
         
-        # Convert NaN values to None for JSON serialization
         result = convert_nan_to_none(result)
         result["model_id"] = model_id
         return result
@@ -228,6 +271,10 @@ async def assess_production_readiness(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# COMPLETE EVALUATION - FIXED TO LOAD AND PASS FEATURE NAMES
+# ============================================================================
+
 @router.post("/complete/{model_id}")
 async def complete_evaluation(
     model_id: str,
@@ -236,7 +283,10 @@ async def complete_evaluation(
     """
     Complete model evaluation in one call.
     
-    Returns ALL metrics at once.
+    Returns ALL metrics at once including feature importance with REAL feature names.
+    
+    FIXED: Now loads feature names from saved model metadata and passes them
+    through the evaluation pipeline.
     """
     try:
         y_test = body.get("y_test")
@@ -257,6 +307,10 @@ async def complete_evaluation(
         cost_fn = body.get("cost_false_negative", 2000)
         revenue_tp = body.get("revenue_true_positive", 1000)
         
+        # ✅ FIX: Load feature names from saved model metadata
+        feature_names = load_feature_names(model_id)
+        
+        # ✅ FIX: Pass feature_names to evaluation service
         result = evaluation_service.complete_evaluation(
             model=None,
             X_test=X_test,
@@ -267,7 +321,8 @@ async def complete_evaluation(
             threshold=float(threshold),
             cost_fp=float(cost_fp),
             cost_fn=float(cost_fn),
-            revenue_tp=float(revenue_tp)
+            revenue_tp=float(revenue_tp),
+            feature_names=feature_names  # ✅ ADDED
         )
         
         # Convert NaN values to None for JSON serialization
@@ -280,6 +335,10 @@ async def complete_evaluation(
         logger.error(f"Complete evaluation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ============================================================================
+# HEALTH CHECK
+# ============================================================================
 
 @router.get("/health")
 async def evaluation_health():
@@ -299,6 +358,7 @@ async def evaluation_health():
             "Business impact calculation",
             "Optimal threshold finding",
             "Production readiness assessment",
-            "Complete model evaluation"
+            "Complete model evaluation",
+            "Real feature names (FIXED)"
         ]
     }
