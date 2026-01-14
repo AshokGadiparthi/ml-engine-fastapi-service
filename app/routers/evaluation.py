@@ -30,13 +30,20 @@ async def evaluate_with_threshold(
     """
     Evaluate model at specific threshold.
     
+    JSON Body:
+    {
+      "y_true": [0, 1, 1, 0],
+      "y_pred_proba": [0.1, 0.9, 0.8, 0.2],
+      "threshold": 0.5,
+      "target_names": null
+    }
     """
     try:
         y_true = body.get("y_true")
         y_pred_proba = body.get("y_pred_proba")
         threshold = body.get("threshold", 0.5)
         target_names = body.get("target_names")
-
+        
         if not y_true or not y_pred_proba:
             raise ValueError("y_true and y_pred_proba are required")
         
@@ -85,7 +92,7 @@ async def calculate_business_impact(
     """
     try:
         evaluation_result = body.get("evaluation_result")
-
+        
         if not evaluation_result:
             raise ValueError("evaluation_result is required - get this from /threshold endpoint first")
         
@@ -99,7 +106,7 @@ async def calculate_business_impact(
         cost_fn = body.get("cost_false_negative", 2000)
         revenue_tp = body.get("revenue_true_positive", 1000)
         volume = body.get("volume", 10000)
-
+        
         result = evaluation_service.calculate_business_impact(
             evaluation_result=evaluation_result,
             cost_false_positive=float(cost_fp),
@@ -130,19 +137,19 @@ async def get_optimal_threshold(
     try:
         if request is None:
             request = {}
-
+            
         y_true = request.get("y_true")
         y_pred_proba = request.get("y_pred_proba")
         cost_fp = request.get("cost_false_positive", 500)
         cost_fn = request.get("cost_false_negative", 2000)
         revenue_tp = request.get("revenue_true_positive", 1000)
-
+        
         if not y_true or not y_pred_proba:
             raise ValueError("y_true and y_pred_proba are required")
         
         y_true = np.array(y_true, dtype=int)
         y_pred_proba = np.array(y_pred_proba, dtype=float)
-
+        
         result = evaluation_service.get_optimal_threshold(
             y_true=y_true,
             y_pred_proba=y_pred_proba,
@@ -180,7 +187,7 @@ async def assess_production_readiness(
     """
     try:
         eval_result = body.get("eval_result") or body.get("evaluation_result")
-
+        
         if not eval_result or "metrics" not in eval_result:
             raise ValueError(
                 "Invalid evaluation_result structure. Make sure it comes from /threshold endpoint. "
@@ -190,7 +197,7 @@ async def assess_production_readiness(
         learning_curve = body.get("learning_curve") or {"gap": 0.0, "overfitting_status": "unknown"}
         business_impact = body.get("business_impact") or {"financial": {"net_profit": 0}}
         feature_importance = body.get("feature_importance") or {"total_features": 0, "features": []}
-
+        
         result = evaluation_service.assess_production_readiness(
             evaluation_result=eval_result,
             learning_curve=learning_curve,
@@ -222,22 +229,22 @@ async def complete_evaluation(
     try:
         y_test = body.get("y_test")
         y_pred_proba = body.get("y_pred_proba")
-
+        
         if not y_test or not y_pred_proba:
             raise ValueError("y_test and y_pred_proba are required")
         
         y_test = np.array(y_test, dtype=int)
         y_pred_proba = np.array(y_pred_proba, dtype=float)
-
+        
         X_test = np.array(body.get("X_test")) if body.get("X_test") else None
         y_train = np.array(body.get("y_train"), dtype=int) if body.get("y_train") else None
         y_pred_train = np.array(body.get("y_pred_train"), dtype=float) if body.get("y_pred_train") else None
-
+        
         threshold = body.get("threshold", 0.5)
         cost_fp = body.get("cost_false_positive", 500)
         cost_fn = body.get("cost_false_negative", 2000)
         revenue_tp = body.get("revenue_true_positive", 1000)
-
+        
         result = evaluation_service.complete_evaluation(
             model=None,
             X_test=X_test,
