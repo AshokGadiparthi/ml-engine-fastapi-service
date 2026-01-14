@@ -6,6 +6,7 @@ import joblib
 import json
 import pandas as pd
 import numpy as np
+import traceback
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Tuple
@@ -87,6 +88,65 @@ class MLService:
         self._save_registry()
         return self.models_registry[model_id]
     
+    # ⭐ NEW METHOD: Validate and clean data before ML processing
+    def _validate_and_clean_data(self, df, target_column, job):
+        """
+        Validate and clean data before ML processing.
+        Prevents algorithm failures due to data quality issues.
+        
+        Args:
+            df: Input DataFrame
+            target_column: Name of target column
+            job: Job object for logging
+            
+        Returns:
+            Cleaned DataFrame ready for ML
+            
+        Raises:
+            ValueError: If target column not found or other validation errors
+        """
+        issues = []
+        original_shape = df.shape
+        
+        job_manager._add_log(job, "INFO", "🔍 Starting data validation and cleaning...")
+        
+        # Check for target column
+        if target_column not in df.columns:
+            raise ValueError(f"❌ Target column '{target_column}' not found in dataset")
+        
+        # ⭐ FIX 1: Remove datetime columns (get_dummies fails with datetime)
+        datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
+        if datetime_cols:
+            df = df.drop(columns=datetime_cols)
+            msg = f"⚠️ Dropped datetime columns (not supported): {datetime_cols}"
+            issues.append(msg)
+            job_manager._add_log(job, "WARNING", msg)
+        
+        # ⭐ FIX 2: Remove all-null columns
+        null_cols = df.columns[df.isnull().all()].tolist()
+        if null_cols:
+            df = df.drop(columns=null_cols)
+            msg = f"⚠️ Dropped all-null columns: {null_cols}"
+            issues.append(msg)
+            job_manager._add_log(job, "WARNING", msg)
+        
+        # ⭐ FIX 3: Remove high-cardinality columns (one-hot encoding explosion)
+        object_cols = df.select_dtypes(include=['object']).columns.tolist()
+        if len(object_cols) > 0:
+            for col in object_cols:
+                unique_vals = df[col].nunique()
+                if unique_vals > 50:  # Threshold for high cardinality
+                    df = df.drop(columns=[col])
+                    msg = f"⚠️ Dropped high-cardinality column '{col}' ({unique_vals} unique values)"
+                    issues.append(msg)
+                    job_manager._add_log(job, "WARNING", msg)
+        
+        result_shape = df.shape
+        msg = f"✅ Data validation complete: {original_shape} → {result_shape}"
+        job_manager._add_log(job, "INFO", msg)
+        
+        return df
+    
     # ============ AUTOML ============
     
     def run_automl(self, job: Job) -> Dict[str, Any]:
@@ -124,6 +184,19 @@ class MLService:
         
         df = pd.read_csv(dataset_path)
         job_manager._add_log(job, "INFO", f"Dataset loaded: {df.shape[0]} rows, {df.shape[1]} columns")
+        
+        # ⭐ NEW: Validate and clean data BEFORE processing to prevent algorithm failures
+        try:
+            df = self._validate_and_clean_data(df, target_column, job)
+        except ValueError as e:
+            job_manager._add_log(job, "ERROR", str(e))
+            job_manager.update_phase(job, "data_loading", "failed")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "phase": "data_loading"
+            }
+        
         job_manager.update_phase(job, "data_loading", "completed")
         
         if job_manager.is_stop_requested(job):
@@ -136,17 +209,41 @@ class MLService:
         X = df.drop(columns=[target_column])
         y = df[target_column]
         
+        # ⭐ NEW: Handle missing values BEFORE encoding
+        # Fill numeric columns with their mean
+        numeric_cols = X.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            X[numeric_cols] = X[numeric_cols].fillna(X[numeric_cols].mean())
+            job_manager._add_log(job, "INFO", f"✅ Filled missing values in numeric columns: {list(numeric_cols)}")
+        
+        # Fill categorical columns with their mode
+        categorical_cols = X.select_dtypes(include=['object']).columns
+        for col in categorical_cols:
+            if X[col].isnull().any():
+                mode_val = X[col].mode()[0] if len(X[col].mode()) > 0 else 'Unknown'
+                X[col] = X[col].fillna(mode_val)
+        if len(categorical_cols) > 0:
+            job_manager._add_log(job, "INFO", f"✅ Filled missing values in categorical columns: {list(categorical_cols)}")
+        
+        # Remove any remaining rows with NaN
+        before_drop = len(X)
+        X = X.dropna()
+        y = y.iloc[X.index]
+        if len(X) < before_drop:
+            dropped_count = before_drop - len(X)
+            job_manager._add_log(job, "INFO", f"⚠️ Removed {dropped_count} rows with missing values after imputation")
+        
         # Save original feature names (before any encoding)
         original_feature_names = list(X.columns)
         
         # Handle categorical columns
         X = pd.get_dummies(X, drop_first=True)
-        job_manager._add_log(job, "INFO", f"Features after encoding: {X.shape[1]}")
+        job_manager._add_log(job, "INFO", f"✅ Features after encoding: {X.shape[1]}")
         
         # Split data
         from sklearn.model_selection import train_test_split
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        job_manager._add_log(job, "INFO", f"Train: {len(X_train)}, Test: {len(X_test)}")
+        job_manager._add_log(job, "INFO", f"✅ Train: {len(X_train)}, Test: {len(X_test)}")
         job_manager.update_phase(job, "data_validation", "completed")
         
         # Save feature names after encoding but BEFORE feature engineering
@@ -228,14 +325,22 @@ class MLService:
                 
                 leaderboard.append(result)
                 job_manager.add_algorithm_result(job, algo_name, mean_score, elapsed)
+                job_manager._add_log(job, "INFO", f"✅ {algo_name}: {mean_score:.4f} (±{std_score:.4f})")
                 
                 if mean_score > best_score:
                     best_score = mean_score
                     best_algorithm = algo_name
                     best_model = model
+                    job_manager._add_log(job, "INFO", f"🏆 New best model: {best_algorithm}")
                 
             except Exception as e:
-                job_manager._add_log(job, "ERROR", f"Failed {algo_name}: {str(e)}")
+                # ⭐ ENHANCED ERROR LOGGING
+                error_msg = f"❌ {algo_name} failed: {str(e)}"
+                job_manager._add_log(job, "ERROR", error_msg)
+                
+                # Add full traceback for debugging
+                tb = traceback.format_exc()
+                job_manager._add_log(job, "DEBUG", f"Full traceback:\n{tb}")
         
         # Sort leaderboard and assign ranks
         leaderboard.sort(key=lambda x: x["score"], reverse=True)
@@ -247,6 +352,33 @@ class MLService:
         # ===== PHASE 5: Model Training =====
         job_manager.update_phase(job, "model_training", "running")
         job_manager.update_progress(job, progress=85, phase="Model Training")
+        
+        # ⭐ CRITICAL FIX: Check if best_model is None before using it
+        if best_model is None or best_algorithm is None:
+            error_msg = "❌ AutoML FAILED: No algorithm succeeded in cross-validation. Check data quality and logs above."
+            job_manager._add_log(job, "ERROR", error_msg)
+            job_manager._add_log(job, "ERROR", f"Tested algorithms: {len(algorithms)}")
+            successful_count = len([r for r in leaderboard if not pd.isna(r['score'])])
+            job_manager._add_log(job, "ERROR", f"Successful algorithms: {successful_count}")
+            job_manager.update_phase(job, "model_training", "failed")
+            
+            return {
+                "status": "failed",
+                "error": error_msg,
+                "leaderboard": leaderboard,
+                "details": {
+                    "algorithms_tested": len(algorithms),
+                    "algorithms_succeeded": successful_count,
+                    "likely_causes": [
+                        "Data contains columns that cannot be properly encoded",
+                        "All features have missing or problematic values",
+                        "Dataset has insufficient samples for cross-validation",
+                        "Target column has invalid values or only one class",
+                        "Memory issues with high-dimensional feature space"
+                    ]
+                }
+            }
+        
         job_manager._add_log(job, "INFO", f"Training best model: {best_algorithm}")
         
         # Train best model on full training data
@@ -383,8 +515,38 @@ class MLService:
         job_manager.update_progress(job, progress=10, phase="Data Loading")
         
         df = pd.read_csv(dataset_path)
+        
+        # ⭐ NEW: Validate and clean data BEFORE processing
+        try:
+            df = self._validate_and_clean_data(df, target_column, job)
+        except ValueError as e:
+            job_manager._add_log(job, "ERROR", str(e))
+            job_manager.update_phase(job, "data_loading", "failed")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "phase": "data_loading"
+            }
+        
         X = df.drop(columns=[target_column])
         y = df[target_column]
+        
+        # ⭐ NEW: Handle missing values
+        numeric_cols = X.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            X[numeric_cols] = X[numeric_cols].fillna(X[numeric_cols].mean())
+        
+        categorical_cols = X.select_dtypes(include=['object']).columns
+        for col in categorical_cols:
+            if X[col].isnull().any():
+                mode_val = X[col].mode()[0] if len(X[col].mode()) > 0 else 'Unknown'
+                X[col] = X[col].fillna(mode_val)
+        
+        before_drop = len(X)
+        X = X.dropna()
+        y = y.iloc[X.index]
+        if len(X) < before_drop:
+            job_manager._add_log(job, "INFO", f"Removed {before_drop - len(X)} rows with missing values")
         
         original_feature_names = list(X.columns)
         X = pd.get_dummies(X, drop_first=True)
@@ -422,20 +584,32 @@ class MLService:
         # Get model based on algorithm
         model = self._get_model(algorithm, problem_type)
         
+        if model is None:
+            error_msg = f"❌ Unknown algorithm: {algorithm}"
+            job_manager._add_log(job, "ERROR", error_msg)
+            job_manager.update_phase(job, "training", "failed")
+            return {
+                "status": "failed",
+                "error": error_msg
+            }
+        
         # Hyperparameter tuning if enabled
         if config.get("tune_hyperparameters", False):
             job_manager._add_log(job, "INFO", "Running hyperparameter tuning...")
-            from ml_engine.hyperparameter_tuning import tune_model
-            tuning_results = tune_model(
-                algorithm=algorithm,
-                X=X_train,
-                y=y_train,
-                search_type=config.get("tuning_search_type", "grid"),
-                cv=config.get("cv_folds", 5)
-            )
-            if tuning_results:
-                model = tuning_results["best_model"]
-                job_manager._add_log(job, "INFO", f"Best params: {tuning_results['best_params']}")
+            try:
+                from ml_engine.hyperparameter_tuning import tune_model
+                tuning_results = tune_model(
+                    algorithm=algorithm,
+                    X=X_train,
+                    y=y_train,
+                    search_type=config.get("tuning_search_type", "grid"),
+                    cv=config.get("cv_folds", 5)
+                )
+                if tuning_results:
+                    model = tuning_results["best_model"]
+                    job_manager._add_log(job, "INFO", f"Best params: {tuning_results['best_params']}")
+            except Exception as e:
+                job_manager._add_log(job, "WARNING", f"Hyperparameter tuning failed: {str(e)}")
         
         # Train model
         model.fit(X_train, y_train)
