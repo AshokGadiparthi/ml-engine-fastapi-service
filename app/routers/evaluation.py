@@ -39,7 +39,7 @@ def convert_nan_to_none(obj):
     return obj
 
 
-def load_feature_names(model_id: str) -> Optional[List[str]]:
+def load_feature_names() -> Optional[List[str]]:
     """
     Load feature names from saved model metadata.
     
