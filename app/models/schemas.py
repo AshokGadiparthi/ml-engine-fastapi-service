@@ -399,6 +399,228 @@ class EDASummary(BaseModel):
     recommendation: Optional[str] = None
 
 
+# ============ LAYER 3: ENHANCED EVALUATION ============
+
+class ThresholdEvaluationRequest(BaseModel):
+    """Request for threshold-based evaluation."""
+    y_true: List[int]  # True labels (0/1)
+    y_pred_proba: List[float]  # Predicted probabilities
+    threshold: float = 0.5  # Classification threshold
+    target_names: Optional[List[str]] = None  # Class names
+
+
+class ConfusionMatrixData(BaseModel):
+    """Confusion matrix with counts."""
+    tn: int  # True negatives
+    fp: int  # False positives
+    fn: int  # False negatives
+    tp: int  # True positives
+    total: int
+
+
+class MetricsData(BaseModel):
+    """Classification metrics."""
+    accuracy: float
+    precision: float
+    recall: float
+    f1_score: float
+    auc_roc: float
+
+
+class RatesData(BaseModel):
+    """Classification rates."""
+    false_positive_rate: float
+    false_negative_rate: float
+    true_positive_rate: float
+    true_negative_rate: float
+
+
+class ClassImbalanceData(BaseModel):
+    """Class imbalance information."""
+    class_0_count: int
+    class_1_count: int
+    imbalance_ratio: float
+    class_distribution: str  # "balanced", "slightly_imbalanced", "imbalanced"
+
+
+class ThresholdEvaluationResponse(BaseModel):
+    """Response for threshold evaluation."""
+    model_id: str
+    threshold: float
+    confusion_matrix: ConfusionMatrixData
+    metrics: MetricsData
+    rates: RatesData
+    class_imbalance: ClassImbalanceData
+
+
+class BusinessImpactRequest(BaseModel):
+    """Request for business impact calculation."""
+    evaluation_result: Dict[str, Any]  # Result from threshold evaluation
+    cost_false_positive: float = 500  # Cost of FP in dollars
+    cost_false_negative: float = 2000  # Cost of FN in dollars
+    revenue_true_positive: float = 1000  # Revenue from TP in dollars
+    volume: float = 10000  # Prediction volume
+
+
+class CostsData(BaseModel):
+    """Cost breakdown."""
+    cost_per_false_positive: float
+    cost_per_false_negative: float
+    total_false_positive_cost: float
+    total_false_negative_cost: float
+    total_cost: float
+
+
+class RevenueData(BaseModel):
+    """Revenue breakdown."""
+    revenue_per_true_positive: float
+    total_revenue_from_tp: float
+
+
+class FinancialData(BaseModel):
+    """Financial summary."""
+    net_profit: float
+    approval_rate: float
+    roi_improvement_percent: float
+
+
+class BusinessImpactResponse(BaseModel):
+    """Response for business impact calculation."""
+    model_id: str
+    costs: CostsData
+    revenue: RevenueData
+    financial: FinancialData
+
+
+class OptimalThresholdRequest(BaseModel):
+    """Request for optimal threshold finding."""
+    y_true: List[int]  # True labels
+    y_pred_proba: List[float]  # Predicted probabilities
+    cost_false_positive: float = 500  # Cost of FP
+    cost_false_negative: float = 2000  # Cost of FN
+    revenue_true_positive: float = 1000  # Revenue from TP
+
+
+class OptimalThresholdResponse(BaseModel):
+    """Response for optimal threshold finding."""
+    model_id: str
+    current_threshold: float
+    optimal_threshold: float
+    current_profit: float
+    optimal_profit: float
+    improvement: float
+    recommendation: str
+
+
+class ProductionReadinessRequest(BaseModel):
+    """Request for production readiness assessment."""
+    evaluation_result: Dict[str, Any]  # From /threshold endpoint
+    learning_curve: Optional[Dict[str, Any]] = None  # From complete evaluation
+    business_impact: Optional[Dict[str, Any]] = None  # From /business-impact
+    feature_importance: Optional[Dict[str, Any]] = None  # From complete evaluation
+
+
+class ProductionReadinessCriteria(BaseModel):
+    """Single production readiness criteria."""
+    category: str  # Category name
+    name: str  # Criteria name
+    status: str  # pass, fail, pending
+    details: str  # Details about status
+
+
+class ProductionReadinessSummary(BaseModel):
+    """Summary of production readiness."""
+    total_criteria: int
+    passed: int
+    failed: int
+    pending: int
+    pass_rate: float
+
+
+class ProductionReadinessResponse(BaseModel):
+    """Response for production readiness assessment."""
+    model_id: str
+    overall_status: str  # ready, pending, not_ready
+    summary: ProductionReadinessSummary
+    criteria: List[ProductionReadinessCriteria]
+    deployment_recommendation: str
+    estimated_time_to_production: str
+
+
+class ROCCurveData(BaseModel):
+    """ROC curve data."""
+    fpr: List[float]
+    tpr: List[float]
+    auc: float
+
+
+class PRCurveData(BaseModel):
+    """Precision-Recall curve data."""
+    precision: List[float]
+    recall: List[float]
+    ap: float
+
+
+class CurveData(BaseModel):
+    """ROC and PR curve data."""
+    roc_curve: ROCCurveData
+    pr_curve: PRCurveData
+
+
+class LearningCurveData(BaseModel):
+    """Learning curve analysis."""
+    test_loss: Optional[float] = None
+    test_accuracy: Optional[float] = None
+    train_loss: Optional[float] = None
+    train_accuracy: Optional[float] = None
+    gap: float  # Train-test gap
+    overfitting_status: str  # none, mild, moderate, severe
+
+
+class FeatureImportanceItem(BaseModel):
+    """Single feature importance entry."""
+    rank: int
+    name: str
+    importance_score: float
+    importance_percent: float
+    correlation_with_target: float
+    correlation_strength: str
+
+
+class FeatureImportanceData(BaseModel):
+    """Feature importance analysis."""
+    features: List[FeatureImportanceItem]
+    top_3_importance_percent: float
+    total_features: int
+    strong_correlations: int
+
+
+class CompleteEvaluationRequest(BaseModel):
+    """Request for complete model evaluation."""
+    y_test: List[int]  # Test labels
+    y_pred_proba: List[float]  # Test predictions
+    X_test: Optional[List[List[float]]] = None  # Test features (optional)
+    y_train: Optional[List[int]] = None  # Train labels (optional)
+    y_pred_train: Optional[List[float]] = None  # Train predictions (optional)
+    cost_false_positive: float = 500
+    cost_false_negative: float = 2000
+    revenue_true_positive: float = 1000
+    threshold: float = 0.5
+
+
+class CompleteEvaluationResponse(BaseModel):
+    """Response for complete model evaluation."""
+    model_id: str
+    timestamp: str
+    evaluation: Dict[str, Any]  # Metrics and confusion matrix
+    business_impact: Dict[str, Any]  # Costs and profit
+    curves: Dict[str, Any]  # ROC and PR curve data
+    learning_curve: Dict[str, Any]  # Overfitting analysis
+    feature_importance: Dict[str, Any]  # Feature ranking
+    optimal_threshold: Dict[str, Any]  # Profit-optimizing threshold
+    production_readiness: Dict[str, Any]  # Deployment checklist
+
+
 # ============ HEALTH CHECK ============
 
 class HealthCheck(BaseModel):
