@@ -51,9 +51,9 @@ def load_feature_names(model_id: str) -> Optional[List[str]]:
     """
     # Try multiple possible paths for feature names file
     possible_paths = [
-        "models/feature_names.pkl",
-        f"models/{model_id}/feature_names.pkl",
-        "model_registry/feature_names.pkl"
+        "/home/ashok/work/latest/kedro-ml-engine/models/feature_names.pkl",  # ✅ YOUR ACTUAL PATH
+        "../kedro-ml-engine/models/feature_names.pkl",
+        "kedro-ml-engine/models/feature_names.pkl"
     ]
     
     for path in possible_paths:
