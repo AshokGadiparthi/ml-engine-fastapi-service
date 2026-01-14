@@ -9,20 +9,13 @@ from typing import Dict, Any, Optional
 import logging
 import numpy as np
 
-from app.models.schemas import (
-    ThresholdEvaluationResponse,
-    BusinessImpactResponse,
-    OptimalThresholdResponse,
-    ProductionReadinessResponse,
-    CompleteEvaluationResponse
-)
 from app.services import evaluation_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/evaluation", tags=["Evaluation - Layer 3"])
 
 
-@router.post("/threshold/{model_id}", response_model=ThresholdEvaluationResponse)
+@router.post("/threshold/{model_id}")
 async def evaluate_with_threshold(
     model_id: str,
     body: Dict[str, Any] = Body(...)
@@ -57,11 +50,9 @@ async def evaluate_with_threshold(
             target_names=target_names
         )
         
-        return ThresholdEvaluationResponse(
-            model_id=model_id,
-            threshold=float(threshold),
-            **result
-        )
+        # result already contains threshold, metrics, confusion_matrix, rates
+        result["model_id"] = model_id
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -69,7 +60,7 @@ async def evaluate_with_threshold(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/business-impact/{model_id}", response_model=BusinessImpactResponse)
+@router.post("/business-impact/{model_id}")
 async def calculate_business_impact(
     model_id: str,
     body: Dict[str, Any] = Body(...)
@@ -115,10 +106,8 @@ async def calculate_business_impact(
             volume=float(volume)
         )
         
-        return BusinessImpactResponse(
-            model_id=model_id,
-            **result
-        )
+        result["model_id"] = model_id
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -126,7 +115,7 @@ async def calculate_business_impact(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/optimal-threshold/{model_id}", response_model=OptimalThresholdResponse)
+@router.post("/optimal-threshold/{model_id}")
 async def get_optimal_threshold(
     model_id: str,
     request: Optional[Dict[str, Any]] = Body(None)
@@ -158,10 +147,8 @@ async def get_optimal_threshold(
             revenue_true_positive=float(revenue_tp)
         )
         
-        return OptimalThresholdResponse(
-            model_id=model_id,
-            **result
-        )
+        result["model_id"] = model_id
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -169,7 +156,7 @@ async def get_optimal_threshold(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/production-readiness/{model_id}", response_model=ProductionReadinessResponse)
+@router.post("/production-readiness/{model_id}")
 async def assess_production_readiness(
     model_id: str,
     body: Dict[str, Any] = Body(...)
@@ -205,10 +192,8 @@ async def assess_production_readiness(
             feature_importance=feature_importance
         )
         
-        return ProductionReadinessResponse(
-            model_id=model_id,
-            **result
-        )
+        result["model_id"] = model_id
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -216,7 +201,7 @@ async def assess_production_readiness(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/complete/{model_id}", response_model=CompleteEvaluationResponse)
+@router.post("/complete/{model_id}")
 async def complete_evaluation(
     model_id: str,
     body: Dict[str, Any] = Body(...)
@@ -258,10 +243,8 @@ async def complete_evaluation(
             revenue_tp=float(revenue_tp)
         )
         
-        return CompleteEvaluationResponse(
-            model_id=model_id,
-            **result
-        )
+        result["model_id"] = model_id
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
