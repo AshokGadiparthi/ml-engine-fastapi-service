@@ -40,21 +40,70 @@ def convert_nan_to_none(obj):
     return obj
 
 
-def load_feature_names() -> list[str] | None:
+from pathlib import Path
+from typing import List, Optional
+import joblib
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def load_feature_names() -> Optional[List[str]]:
+    """
+    Load feature names used during model training.
+
+    - Works in local dev, FastAPI service, Docker
+    - Never throws NameError or crashes evaluation
+    - Sanitizes feature names for downstream compatibility
+    """
+
     paths_to_try = [
+        # Absolute path (local workstation / VM)
         Path.home() / "work/latest/kedro-ml-engine/models/feature_names.pkl",
-        Path(__file__).resolve().parents[2] / "models" / "feature_names.pkl",  # adjust if needed
+
+        # Relative to this file: <repo>/src/ml_engine/evaluation_enhanced.py
+        # parents[2] -> <repo>/src
+        Path(__file__).resolve().parents[2] / "models" / "feature_names.pkl",
     ]
 
-    for p in paths_to_try:
-        if p.exists():
-            feature_names = joblib.load(p)
-            feature_names = [str(n).replace("-", "_").replace(" ", "_") for n in feature_names]
-            logger.info(f"Loaded {len(feature_names)} feature names from {p}")
-            return feature_names
+    for path in paths_to_try:
+        try:
+            if path.exists():
+                feature_names = joblib.load(path)
 
-    logger.warning("feature_names.pkl not found")
+                # Defensive validation
+                if not isinstance(feature_names, (list, tuple)):
+                    raise ValueError(f"Invalid feature_names type: {type(feature_names)}")
+
+                # Sanitize names for sklearn / SHAP / JSON safety
+                sanitized = [
+                    str(name)
+                    .strip()
+                    .replace("-", "_")
+                    .replace(" ", "_")
+                    .replace(".", "_")
+                    for name in feature_names
+                ]
+
+                logger.info(
+                    "Loaded %d feature names from %s",
+                    len(sanitized),
+                    path
+                )
+
+                return sanitized
+
+        except Exception as e:
+            logger.warning(
+                "Failed to load feature names from %s: %s",
+                path,
+                e,
+                exc_info=True
+            )
+
+    logger.warning("feature_names.pkl not found in any known location")
     return None
+
 
 
 # ============================================================================
